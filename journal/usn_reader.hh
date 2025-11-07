@@ -31,7 +31,7 @@ struct FileEvent {
 struct AggregatedUSNEntry {
     std::wstring name;
     std::wstring directory;
-    ULONGLONG fileId;
+    ULONGLONG fileId = 0;
     std::vector<FileEvent> events;
 };
 
@@ -121,8 +121,8 @@ private:
                 auto common = reinterpret_cast<USN_RECORD_COMMON_HEADER*>(ptr);
                 if (common->RecordLength == 0) break;
 
-                std::wstring name = L"[Unknown]";
-                std::wstring directory = L"[Unknown]";
+                std::wstring name = L"?";
+                std::wstring directory = L"?";
                 FILETIME ft{}, localTime{};
                 std::string reasonStr;
                 ULONGLONG usn = 0;
@@ -209,7 +209,7 @@ private:
             FILE_SHARE_READ | FILE_SHARE_WRITE,
             nullptr, FILE_FLAG_BACKUP_SEMANTICS);
 
-        std::wstring directory = L"[Unknown]";
+        std::wstring directory = L"?";
         if (fileHandle != INVALID_HANDLE_VALUE) {
             WCHAR path[MAX_PATH] = {};
             DWORD ret = GetFinalPathNameByHandleW(fileHandle, path, MAX_PATH, FILE_NAME_NORMALIZED);
@@ -252,7 +252,7 @@ private:
             FILE_SHARE_READ | FILE_SHARE_WRITE,
             nullptr, FILE_FLAG_BACKUP_SEMANTICS);
 
-        std::wstring directory = L"[Unknown]";
+        std::wstring directory = L"?";
         if (fileHandle != INVALID_HANDLE_VALUE) {
             WCHAR path[MAX_PATH] = {};
             DWORD ret = GetFinalPathNameByHandleW(fileHandle, path, MAX_PATH, FILE_NAME_NORMALIZED);
@@ -309,7 +309,7 @@ private:
                 result += r.desc;
             }
 
-        return result.empty() ? "Unknown" : result;
+        return result.empty() ? "?" : result;
     }
 
     void PushEntry(ULONGLONG fileId, ULONGLONG usn, const std::wstring& name,

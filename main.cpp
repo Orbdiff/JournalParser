@@ -12,6 +12,7 @@
 #include <format>
 #include <iostream>
 #include <algorithm>
+#include <filesystem>
 
 #include "imgui.h"
 #include "imgui_impl_win32.h"
@@ -19,42 +20,44 @@
 #include "usn_reader.hh"
 #include "jrnl_utils.h"
 #include "d3dx.hh"
+#include "_font.h"
 
-#pragma comment(lib, "d3d11.lib")
-
-extern LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
-
-LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
-    if (ImGui_ImplWin32_WndProcHandler(hWnd, msg, wParam, lParam))
-        return true;
-    switch (msg) {
-    case WM_SIZE:
-        if (g_pd3dDevice && wParam != SIZE_MINIMIZED) {
-            if (g_mainRenderTargetView) { g_mainRenderTargetView->Release(); g_mainRenderTargetView = nullptr; }
-            g_pSwapChain->ResizeBuffers(0, (UINT)LOWORD(lParam), (UINT)HIWORD(lParam), DXGI_FORMAT_UNKNOWN, 0);
-            CreateRenderTarget();
-        }
-        return 0;
-    case WM_DESTROY:
-        PostQuitMessage(0);
-        return 0;
-    }
-    return DefWindowProc(hWnd, msg, wParam, lParam);
-}
-
-int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow)
+int WINAPI WinMain
+(
+    _In_ HINSTANCE hInstance,
+    _In_opt_ HINSTANCE hPrevInstance,
+    _In_ LPSTR lpCmdLine,
+    _In_ int nShowCmd
+) 
 {
-    WNDCLASSEX wc = { sizeof(WNDCLASSEX), CS_CLASSDC, WndProc, 0L, 0L,
-        hInstance, nullptr, nullptr, nullptr, nullptr,
-        _T("JournalParser"), nullptr };
+    WNDCLASSEX wc = {
+        sizeof(WNDCLASSEX),
+        CS_CLASSDC,
+        WndProc,
+        0L, 0L,
+        hInstance,
+        nullptr, nullptr, nullptr, nullptr,
+        _T("JournalParser"),
+        nullptr
+    };
     RegisterClassEx(&wc);
 
     HWND hwnd = CreateWindow(
-        wc.lpszClassName, _T("JournalParser"),
-        WS_OVERLAPPEDWINDOW, 100, 100, 1280, 720,
+        wc.lpszClassName,
+        _T("JournalParser"),
+        WS_OVERLAPPEDWINDOW,
+        CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT,
         nullptr, nullptr, wc.hInstance, nullptr);
 
-    if (!CreateDeviceD3D(hwnd)) { CleanupDeviceD3D(); return 1; }
+    ShowWindow(hwnd, SW_SHOWMAXIMIZED);
+    UpdateWindow(hwnd);
+
+    if (!CreateDeviceD3D(hwnd))
+    {
+        CleanupDeviceD3D();
+        return 1;
+    }
+
     CreateRenderTarget();
 
     IMGUI_CHECKVERSION();
@@ -63,87 +66,95 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow)
     ImGuiStyle& style = ImGui::GetStyle();
     ImVec4* colors = style.Colors;
 
-    colors[ImGuiCol_Text] = ImVec4(0.95f, 0.96f, 0.98f, 1.00f);
-    colors[ImGuiCol_TextDisabled] = ImVec4(0.55f, 0.55f, 0.60f, 1.00f);
-    colors[ImGuiCol_WindowBg] = ImVec4(0.11f, 0.12f, 0.14f, 1.00f);
-    colors[ImGuiCol_ChildBg] = ImVec4(0.10f, 0.10f, 0.11f, 1.00f);
-    colors[ImGuiCol_PopupBg] = ImVec4(0.08f, 0.08f, 0.10f, 0.94f);
-    colors[ImGuiCol_Border] = ImVec4(0.29f, 0.29f, 0.30f, 0.60f);
-    colors[ImGuiCol_BorderShadow] = ImVec4(0.00f, 0.00f, 0.00f, 0.10f);
+    colors[ImGuiCol_Text] = ImVec4(0.90f, 0.90f, 0.90f, 1.00f);
+    colors[ImGuiCol_TextDisabled] = ImVec4(0.50f, 0.50f, 0.50f, 1.00f);
+    colors[ImGuiCol_WindowBg] = ImVec4(0.07f, 0.07f, 0.07f, 1.00f);
+    colors[ImGuiCol_ChildBg] = ImVec4(0.08f, 0.08f, 0.08f, 1.00f);
+    colors[ImGuiCol_PopupBg] = ImVec4(0.08f, 0.08f, 0.08f, 1.00f);
+    colors[ImGuiCol_FrameBg] = ImVec4(0.10f, 0.10f, 0.10f, 1.00f);
+    colors[ImGuiCol_FrameBgHovered] = ImVec4(0.18f, 0.18f, 0.18f, 1.00f);
+    colors[ImGuiCol_FrameBgActive] = ImVec4(0.22f, 0.22f, 0.22f, 1.00f);
+    colors[ImGuiCol_Border] = ImVec4(0.25f, 0.25f, 0.25f, 1.00f);
+    colors[ImGuiCol_BorderShadow] = ImVec4(0, 0, 0, 0);
+    colors[ImGuiCol_TitleBg] = ImVec4(0.08f, 0.08f, 0.08f, 1.00f);
+    colors[ImGuiCol_TitleBgActive] = ImVec4(0.12f, 0.12f, 0.12f, 1.00f);
+    colors[ImGuiCol_TitleBgCollapsed] = ImVec4(0.07f, 0.07f, 0.07f, 0.85f);
+    colors[ImGuiCol_MenuBarBg] = ImVec4(0.08f, 0.08f, 0.08f, 1.00f);
+    colors[ImGuiCol_ScrollbarBg] = ImVec4(0.05f, 0.05f, 0.05f, 1.00f);
+    colors[ImGuiCol_ScrollbarGrab] = ImVec4(0.30f, 0.50f, 0.85f, 1.00f);
+    colors[ImGuiCol_ScrollbarGrabHovered] = ImVec4(0.35f, 0.60f, 0.95f, 1.00f);
+    colors[ImGuiCol_ScrollbarGrabActive] = ImVec4(0.40f, 0.70f, 1.00f, 1.00f);
+    colors[ImGuiCol_Button] = ImVec4(0.12f, 0.12f, 0.12f, 1.00f);
+    colors[ImGuiCol_ButtonHovered] = ImVec4(0.30f, 0.50f, 0.85f, 1.00f);
+    colors[ImGuiCol_ButtonActive] = ImVec4(0.35f, 0.60f, 0.95f, 1.00f);
+    colors[ImGuiCol_SliderGrab] = ImVec4(0.30f, 0.50f, 0.85f, 1.00f);
+    colors[ImGuiCol_SliderGrabActive] = ImVec4(0.35f, 0.60f, 1.00f, 1.00f);
+    colors[ImGuiCol_CheckMark] = ImVec4(0.35f, 0.60f, 1.00f, 1.00f);
+    colors[ImGuiCol_Header] = ImVec4(0.35f, 0.60f, 1.00f, 0.5f);
+    colors[ImGuiCol_HeaderHovered] = ImVec4(0.30f, 0.50f, 0.85f, 1.00f);
+    colors[ImGuiCol_HeaderActive] = ImVec4(0.35f, 0.60f, 1.00f, 1.00f);
+    colors[ImGuiCol_Tab] = ImVec4(0.08f, 0.08f, 0.08f, 1.00f);
+    colors[ImGuiCol_TabHovered] = ImVec4(0.30f, 0.50f, 0.85f, 1.00f);
+    colors[ImGuiCol_TabActive] = ImVec4(0.35f, 0.60f, 1.00f, 1.00f);
+    colors[ImGuiCol_TabUnfocused] = ImVec4(0.08f, 0.08f, 0.08f, 1.00f);
+    colors[ImGuiCol_TabUnfocusedActive] = ImVec4(0.20f, 0.35f, 0.60f, 1.00f);
+    colors[ImGuiCol_Separator] = ImVec4(0.20f, 0.20f, 0.20f, 1.00f);
+    colors[ImGuiCol_SeparatorHovered] = ImVec4(0.30f, 0.50f, 0.85f, 1.00f);
+    colors[ImGuiCol_SeparatorActive] = ImVec4(0.35f, 0.60f, 1.00f, 1.00f);
+    colors[ImGuiCol_ResizeGrip] = ImVec4(0.20f, 0.20f, 0.20f, 1.00f);
+    colors[ImGuiCol_ResizeGripHovered] = ImVec4(0.30f, 0.50f, 0.85f, 1.00f);
+    colors[ImGuiCol_ResizeGripActive] = ImVec4(0.35f, 0.60f, 1.00f, 1.00f);
+    colors[ImGuiCol_TableHeaderBg] = ImVec4(0.08f, 0.08f, 0.08f, 1.00f);
+    colors[ImGuiCol_TableBorderStrong] = ImVec4(0.25f, 0.25f, 0.25f, 1.00f);
+    colors[ImGuiCol_TableBorderLight] = ImVec4(0.15f, 0.15f, 0.15f, 1.00f);
+    colors[ImGuiCol_TableRowBg] = ImVec4(0, 0, 0, 0);
+    colors[ImGuiCol_TableRowBgAlt] = ImVec4(0.08f, 0.08f, 0.08f, 1.00f);
 
-    colors[ImGuiCol_FrameBg] = ImVec4(0.20f, 0.21f, 0.23f, 1.00f);
-    colors[ImGuiCol_FrameBgHovered] = ImVec4(0.30f, 0.31f, 0.33f, 1.00f);
-    colors[ImGuiCol_FrameBgActive] = ImVec4(0.25f, 0.26f, 0.28f, 1.00f);
-
-    colors[ImGuiCol_TitleBg] = ImVec4(0.14f, 0.14f, 0.18f, 1.00f);
-    colors[ImGuiCol_TitleBgActive] = ImVec4(0.18f, 0.19f, 0.23f, 1.00f);
-    colors[ImGuiCol_TitleBgCollapsed] = ImVec4(0.09f, 0.09f, 0.09f, 0.50f);
-
-    colors[ImGuiCol_MenuBarBg] = ImVec4(0.13f, 0.14f, 0.15f, 1.00f);
-    colors[ImGuiCol_ScrollbarBg] = ImVec4(0.02f, 0.02f, 0.02f, 0.39f);
-    colors[ImGuiCol_ScrollbarGrab] = ImVec4(0.20f, 0.25f, 0.30f, 1.00f);
-    colors[ImGuiCol_ScrollbarGrabHovered] = ImVec4(0.25f, 0.30f, 0.35f, 1.00f);
-    colors[ImGuiCol_ScrollbarGrabActive] = ImVec4(0.30f, 0.35f, 0.40f, 1.00f);
-
-    colors[ImGuiCol_CheckMark] = ImVec4(0.40f, 0.70f, 0.90f, 1.00f);
-    colors[ImGuiCol_SliderGrab] = ImVec4(0.30f, 0.60f, 0.80f, 1.00f);
-    colors[ImGuiCol_SliderGrabActive] = ImVec4(0.40f, 0.70f, 0.90f, 1.00f);
-
-    colors[ImGuiCol_Button] = ImVec4(0.20f, 0.30f, 0.45f, 0.70f);
-    colors[ImGuiCol_ButtonHovered] = ImVec4(0.30f, 0.45f, 0.60f, 1.00f);
-    colors[ImGuiCol_ButtonActive] = ImVec4(0.25f, 0.40f, 0.55f, 1.00f);
-
-    colors[ImGuiCol_Header] = ImVec4(0.20f, 0.25f, 0.35f, 0.80f);
-    colors[ImGuiCol_HeaderHovered] = ImVec4(0.25f, 0.30f, 0.40f, 0.80f);
-    colors[ImGuiCol_HeaderActive] = ImVec4(0.30f, 0.35f, 0.45f, 1.00f);
-
-    colors[ImGuiCol_Separator] = ImVec4(0.40f, 0.40f, 0.45f, 0.50f);
-    colors[ImGuiCol_SeparatorHovered] = ImVec4(0.60f, 0.60f, 0.70f, 1.00f);
-    colors[ImGuiCol_SeparatorActive] = ImVec4(0.70f, 0.70f, 0.90f, 1.00f);
-
-    colors[ImGuiCol_ResizeGrip] = ImVec4(0.20f, 0.25f, 0.30f, 0.70f);
-    colors[ImGuiCol_ResizeGripHovered] = ImVec4(0.30f, 0.35f, 0.40f, 0.80f);
-    colors[ImGuiCol_ResizeGripActive] = ImVec4(0.40f, 0.45f, 0.50f, 1.00f);
-
-    colors[ImGuiCol_Tab] = ImVec4(0.15f, 0.18f, 0.23f, 1.00f);
-    colors[ImGuiCol_TabHovered] = ImVec4(0.28f, 0.30f, 0.37f, 1.00f);
-    colors[ImGuiCol_TabActive] = ImVec4(0.20f, 0.22f, 0.27f, 1.00f);
-    colors[ImGuiCol_TabUnfocused] = ImVec4(0.15f, 0.16f, 0.20f, 1.00f);
-    colors[ImGuiCol_TabUnfocusedActive] = ImVec4(0.17f, 0.18f, 0.22f, 1.00f);
-
-    colors[ImGuiCol_TableHeaderBg] = ImVec4(0.15f, 0.16f, 0.20f, 1.00f);
-    colors[ImGuiCol_TableBorderStrong] = ImVec4(0.35f, 0.35f, 0.40f, 1.00f);
-    colors[ImGuiCol_TableBorderLight] = ImVec4(0.25f, 0.25f, 0.30f, 1.00f);
-    colors[ImGuiCol_TableRowBg] = ImVec4(0.00f, 0.00f, 0.00f, 0.00f);
-    colors[ImGuiCol_TableRowBgAlt] = ImVec4(0.10f, 0.10f, 0.13f, 0.25f);
-
-    style.FrameRounding = 6.0f;
-    style.GrabRounding = 4.0f;
     style.WindowRounding = 6.0f;
+    style.FrameRounding = 4.0f;
+    style.GrabRounding = 4.0f;
     style.ScrollbarRounding = 6.0f;
     style.TabRounding = 4.0f;
-
     style.WindowBorderSize = 1.0f;
-    style.FrameBorderSize = 1.0f;
-    style.ScrollbarSize = 14.0f;
-
-    style.ItemSpacing = ImVec2(10, 8);
-    style.ItemInnerSpacing = ImVec2(8, 6);
+    style.FrameBorderSize = 0.8f;
+    style.ScrollbarSize = 12.0f;
+    style.ItemSpacing = ImVec2(10, 6);
+    style.ItemInnerSpacing = ImVec2(6, 4);
     style.CellPadding = ImVec2(6, 4);
     style.WindowPadding = ImVec2(12, 12);
-    style.FramePadding = ImVec2(10, 6);
+    style.FramePadding = ImVec2(8, 5);
 
-    ImFont* arialFont = io.Fonts->AddFontFromFileTTF("C:\\Windows\\Fonts\\segoeui.ttf", 14.5f);
-    io.FontDefault = arialFont;
+    ImFontConfig CustomFont;
+    CustomFont.FontDataOwnedByAtlas = false;
+
+    ImFont* font = io.Fonts->AddFontFromMemoryTTF(
+        (void*)Custom,
+        static_cast<int>(Custom_len),
+        14.5f,
+        &CustomFont
+    );
+
+    io.FontDefault = font;
 
     ImGui_ImplWin32_Init(hwnd);
     ImGui_ImplDX11_Init(g_pd3dDevice, g_pd3dDeviceContext);
 
-    ShowWindow(hwnd, SW_SHOWDEFAULT);
-    UpdateWindow(hwnd);
+    wchar_t windowsPath[MAX_PATH];
+    UINT len = GetWindowsDirectoryW(windowsPath, MAX_PATH);
 
-    std::thread usnThread(LoadUSNJournal, L"C:");
-    usnThread.detach();
+    if (len == 0 || len > MAX_PATH)
+    {
+        return 1;
+    }
+
+    wchar_t systemDrive[3] = { windowsPath[0], L':', L'\0' };
+
+    std::wstring checkPath = std::wstring(systemDrive) + L"\\Windows\\System32\\kernel32.dll";
+    if (std::filesystem::exists(checkPath))
+    {
+        std::thread usnThread(LoadUSNJournal, systemDrive);
+        usnThread.detach();
+    }
 
     MSG msg;
     ZeroMemory(&msg, sizeof(msg));
@@ -174,40 +185,44 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow)
         {
             ImVec2 pos = ImGui::GetWindowPos();
             ImVec2 size = ImGui::GetWindowSize();
-            ImVec2 center = ImVec2(pos.x + size.x * 0.5f, pos.y + size.y * 0.5f);
-
-            float radius = 30.0f; 
-            int dotCount = 12;
-            float dotRadius = 5.0f;
-            float speed = 2.5f;
-            float time = (float)ImGui::GetTime();
+            ImVec2 center = ImVec2(pos.x + size.x * 0.5f, pos.y + size.y * 0.5f - 20.0f);
 
             ImDrawList* draw_list = ImGui::GetWindowDrawList();
 
-            for (int i = 0; i < dotCount; i++)
+            float baseRadius = 30.0f;
+            float t = static_cast<float>(ImGui::GetTime());
+            float pulse = 0.85f + 0.15f * sinf(t * 3.0f);
+            float radius = baseRadius * pulse;
+
+            ImU32 colors[3] = {
+                IM_COL32(255, 60, 60, 255),
+                IM_COL32(255, 120, 120, 255),
+                IM_COL32(255, 180, 180, 255)
+            };
+
+            for (int i = 0; i < 3; ++i)
             {
-                float angle = (IM_PI * 2.0f / dotCount) * i + time * speed;
-                float x = center.x + cosf(angle) * radius;
-                float y = center.y + sinf(angle) * radius;
+                float angle = t * 3.0f + i * 1.2f;
+                float start = angle;
+                float end = angle + 1.4f;
 
-                float alpha = (sinf(time * speed + i * 0.5f) * 0.5f + 0.5f);
-                int a = (int)(100 + 155 * alpha);
-
-                draw_list->AddCircleFilled(ImVec2(x, y), dotRadius, IM_COL32(0, 150, 255, a));
+                draw_list->PathArcTo(center, radius - i * 6.0f, start, end, 32);
+                draw_list->PathStroke(colors[i], false, 4.0f);
             }
 
-            static const char* messages[] = {
-                "Parsing USN Journal...",
-                "Finalizing parsing..."
-            };
-            const int numMessages = sizeof(messages) / sizeof(messages[0]);
-            int index = static_cast<int>(time / 10.0f) % numMessages;
+            const char* loadingText = "Parsing USN Journal...";
+            ImVec2 textSize = ImGui::CalcTextSize(loadingText);
+            ImVec2 textPos = ImVec2(center.x - textSize.x * 0.5f, center.y + baseRadius + 18.0f);
 
-            float fontSize = 18.0f;
-            ImVec2 textSize = ImGui::CalcTextSize(messages[index]);
-            ImVec2 textPos(center.x - textSize.x * 0.5f, center.y + radius + 25.0f);
-            draw_list->AddText(ImGui::GetFont(), fontSize, textPos, IM_COL32(200, 200, 200, 255), messages[index]);
-        } else {
+            float textPulse = 0.85f + 0.15f * sinf(t * 2.0f);
+            int alpha = static_cast<int>(220 + 35 * textPulse);
+            if (alpha > 255) alpha = 255;
+
+            ImU32 textColor = IM_COL32(220, 220, 220, alpha);
+            draw_list->AddText(ImGui::GetFont(), 16.0f, textPos, textColor, loadingText);
+        }
+
+        else {
             ImGui::PushItemWidth(600.0f);
             if (ImGui::InputText("Search", g_searchInputBuffer.data(), g_searchInputBuffer.size(),
                 ImGuiInputTextFlags_EnterReturnsTrue))
@@ -357,7 +372,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow)
 
                                 ImGui::OpenPopup(("Entry Information - " + grouped.name).c_str());
 
-                                ImGui::SetNextWindowSize(ImVec2(1000, 700), ImGuiCond_FirstUseEver);
+                                ImGui::SetNextWindowSize(ImVec2(1280, 720), ImGuiCond_FirstUseEver);
                                 ImGui::SetNextWindowSizeConstraints(ImVec2(1000, 700), ImVec2(FLT_MAX, FLT_MAX));
                                 ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 10.0f);
                                 ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, 6.0f);

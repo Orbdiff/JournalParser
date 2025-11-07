@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include "usn_reader.hh"
 
@@ -16,7 +16,7 @@ struct USNEntryRender {
     std::string date;
     std::string reason;
     std::string directory;
-    ULONGLONG fileId;
+    ULONGLONG fileId = 0;
     std::vector<USNEvent> events;
 };
 
@@ -93,8 +93,10 @@ void LoadUSNJournal(const std::wstring& volume) {
                 grp.reason,
                 grp.directory
                 });
+
+            ULONGLONG id = grp.fileId;
             entriesGrouped.push_back(std::move(grp));
-            fileIdMap[grp.fileId] = entriesGrouped.size() - 1;
+            fileIdMap[id] = entriesGrouped.size() - 1;
         }
     }
 
