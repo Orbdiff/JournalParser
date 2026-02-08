@@ -1,8 +1,4 @@
-﻿#ifndef IM_PI
-#define IM_PI 3.14159265358979323846f
-#endif
-
-#include <windows.h>
+﻿#include <windows.h>
 #include <thread>
 #include <vector>
 #include <string>
@@ -17,19 +13,23 @@
 #include "imgui.h"
 #include "imgui_impl_win32.h"
 #include "imgui_impl_dx11.h"
-#include "usn_reader.hh"
-#include "jrnl_utils.h"
-#include "d3dx.hh"
+#include "journal/usn_reader.hh"
+#include "journal/jrnl_utils.h"
+#include "d3d11/d3dx.hh"
 #include "_font.h"
+#include "journal/usn_info.h"
 
-int WINAPI WinMain
-(
+ImFont* g_font = nullptr;
+static int g_modalOpenRow = -1;
+static std::string g_usnAnalysisResult = "";
+static bool g_showUSNAnalysisModal = false;
+
+int WINAPI WinMain(
     _In_ HINSTANCE hInstance,
     _In_opt_ HINSTANCE hPrevInstance,
     _In_ LPSTR lpCmdLine,
     _In_ int nShowCmd
-) 
-{
+) {
     WNDCLASSEX wc = {
         sizeof(WNDCLASSEX),
         CS_CLASSDC,
@@ -52,107 +52,93 @@ int WINAPI WinMain
     ShowWindow(hwnd, SW_SHOWMAXIMIZED);
     UpdateWindow(hwnd);
 
-    if (!CreateDeviceD3D(hwnd))
-    {
+    if (!CreateDeviceD3D(hwnd)) {
         CleanupDeviceD3D();
         return 1;
     }
 
-    CreateRenderTarget();
-
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
     ImGuiIO& io = ImGui::GetIO(); (void)io;
+
     ImGuiStyle& style = ImGui::GetStyle();
     ImVec4* colors = style.Colors;
 
-    colors[ImGuiCol_Text] = ImVec4(0.90f, 0.90f, 0.90f, 1.00f);
+    colors[ImGuiCol_Text] = ImVec4(0.95f, 0.95f, 0.95f, 1.00f);
     colors[ImGuiCol_TextDisabled] = ImVec4(0.50f, 0.50f, 0.50f, 1.00f);
-    colors[ImGuiCol_WindowBg] = ImVec4(0.07f, 0.07f, 0.07f, 1.00f);
-    colors[ImGuiCol_ChildBg] = ImVec4(0.08f, 0.08f, 0.08f, 1.00f);
-    colors[ImGuiCol_PopupBg] = ImVec4(0.08f, 0.08f, 0.08f, 1.00f);
-    colors[ImGuiCol_FrameBg] = ImVec4(0.10f, 0.10f, 0.10f, 1.00f);
+    colors[ImGuiCol_WindowBg] = ImVec4(0.08f, 0.08f, 0.08f, 1.00f);
+    colors[ImGuiCol_ChildBg] = ImVec4(0.09f, 0.09f, 0.09f, 1.00f);
+    colors[ImGuiCol_PopupBg] = ImVec4(0.10f, 0.10f, 0.10f, 0.95f);
+    colors[ImGuiCol_Border] = ImVec4(0.20f, 0.20f, 0.20f, 1.00f);
+    colors[ImGuiCol_BorderShadow] = ImVec4(0.00f, 0.00f, 0.00f, 0.00f);
+    colors[ImGuiCol_FrameBg] = ImVec4(0.14f, 0.14f, 0.14f, 1.00f);
     colors[ImGuiCol_FrameBgHovered] = ImVec4(0.18f, 0.18f, 0.18f, 1.00f);
     colors[ImGuiCol_FrameBgActive] = ImVec4(0.22f, 0.22f, 0.22f, 1.00f);
-    colors[ImGuiCol_Border] = ImVec4(0.25f, 0.25f, 0.25f, 1.00f);
-    colors[ImGuiCol_BorderShadow] = ImVec4(0, 0, 0, 0);
-    colors[ImGuiCol_TitleBg] = ImVec4(0.08f, 0.08f, 0.08f, 1.00f);
-    colors[ImGuiCol_TitleBgActive] = ImVec4(0.12f, 0.12f, 0.12f, 1.00f);
-    colors[ImGuiCol_TitleBgCollapsed] = ImVec4(0.07f, 0.07f, 0.07f, 0.85f);
-    colors[ImGuiCol_MenuBarBg] = ImVec4(0.08f, 0.08f, 0.08f, 1.00f);
-    colors[ImGuiCol_ScrollbarBg] = ImVec4(0.05f, 0.05f, 0.05f, 1.00f);
-    colors[ImGuiCol_ScrollbarGrab] = ImVec4(0.30f, 0.50f, 0.85f, 1.00f);
-    colors[ImGuiCol_ScrollbarGrabHovered] = ImVec4(0.35f, 0.60f, 0.95f, 1.00f);
-    colors[ImGuiCol_ScrollbarGrabActive] = ImVec4(0.40f, 0.70f, 1.00f, 1.00f);
-    colors[ImGuiCol_Button] = ImVec4(0.12f, 0.12f, 0.12f, 1.00f);
-    colors[ImGuiCol_ButtonHovered] = ImVec4(0.30f, 0.50f, 0.85f, 1.00f);
-    colors[ImGuiCol_ButtonActive] = ImVec4(0.35f, 0.60f, 0.95f, 1.00f);
-    colors[ImGuiCol_SliderGrab] = ImVec4(0.30f, 0.50f, 0.85f, 1.00f);
-    colors[ImGuiCol_SliderGrabActive] = ImVec4(0.35f, 0.60f, 1.00f, 1.00f);
-    colors[ImGuiCol_CheckMark] = ImVec4(0.35f, 0.60f, 1.00f, 1.00f);
-    colors[ImGuiCol_Header] = ImVec4(0.35f, 0.60f, 1.00f, 0.5f);
-    colors[ImGuiCol_HeaderHovered] = ImVec4(0.30f, 0.50f, 0.85f, 1.00f);
-    colors[ImGuiCol_HeaderActive] = ImVec4(0.35f, 0.60f, 1.00f, 1.00f);
-    colors[ImGuiCol_Tab] = ImVec4(0.08f, 0.08f, 0.08f, 1.00f);
-    colors[ImGuiCol_TabHovered] = ImVec4(0.30f, 0.50f, 0.85f, 1.00f);
-    colors[ImGuiCol_TabActive] = ImVec4(0.35f, 0.60f, 1.00f, 1.00f);
-    colors[ImGuiCol_TabUnfocused] = ImVec4(0.08f, 0.08f, 0.08f, 1.00f);
-    colors[ImGuiCol_TabUnfocusedActive] = ImVec4(0.20f, 0.35f, 0.60f, 1.00f);
+    colors[ImGuiCol_TitleBg] = ImVec4(0.07f, 0.07f, 0.07f, 1.00f);
+    colors[ImGuiCol_TitleBgActive] = ImVec4(0.09f, 0.09f, 0.09f, 1.00f);
+    colors[ImGuiCol_TitleBgCollapsed] = ImVec4(0.07f, 0.07f, 0.07f, 0.75f);
+    colors[ImGuiCol_MenuBarBg] = ImVec4(0.10f, 0.10f, 0.10f, 1.00f);
+    colors[ImGuiCol_ScrollbarBg] = ImVec4(0.07f, 0.07f, 0.07f, 1.00f);
+    colors[ImGuiCol_ScrollbarGrab] = ImVec4(0.25f, 0.25f, 0.25f, 1.00f);
+    colors[ImGuiCol_ScrollbarGrabHovered] = ImVec4(0.30f, 0.30f, 0.30f, 1.00f);
+    colors[ImGuiCol_ScrollbarGrabActive] = ImVec4(0.35f, 0.35f, 0.35f, 1.00f);
     colors[ImGuiCol_Separator] = ImVec4(0.20f, 0.20f, 0.20f, 1.00f);
-    colors[ImGuiCol_SeparatorHovered] = ImVec4(0.30f, 0.50f, 0.85f, 1.00f);
-    colors[ImGuiCol_SeparatorActive] = ImVec4(0.35f, 0.60f, 1.00f, 1.00f);
-    colors[ImGuiCol_ResizeGrip] = ImVec4(0.20f, 0.20f, 0.20f, 1.00f);
-    colors[ImGuiCol_ResizeGripHovered] = ImVec4(0.30f, 0.50f, 0.85f, 1.00f);
-    colors[ImGuiCol_ResizeGripActive] = ImVec4(0.35f, 0.60f, 1.00f, 1.00f);
-    colors[ImGuiCol_TableHeaderBg] = ImVec4(0.08f, 0.08f, 0.08f, 1.00f);
-    colors[ImGuiCol_TableBorderStrong] = ImVec4(0.25f, 0.25f, 0.25f, 1.00f);
+    colors[ImGuiCol_SeparatorHovered] = ImVec4(0.25f, 0.25f, 0.25f, 1.00f);
+    colors[ImGuiCol_SeparatorActive] = ImVec4(0.30f, 0.30f, 0.30f, 1.00f);
+    colors[ImGuiCol_Tab] = ImVec4(0.11f, 0.11f, 0.11f, 1.00f);
+    colors[ImGuiCol_TabHovered] = ImVec4(0.17f, 0.17f, 0.17f, 1.00f);
+    colors[ImGuiCol_TabActive] = ImVec4(0.14f, 0.14f, 0.14f, 1.00f);
+    colors[ImGuiCol_TabUnfocused] = ImVec4(0.09f, 0.09f, 0.09f, 1.00f);
+    colors[ImGuiCol_TabUnfocusedActive] = ImVec4(0.12f, 0.12f, 0.12f, 1.00f);
+    colors[ImGuiCol_TableHeaderBg] = ImVec4(0.11f, 0.11f, 0.11f, 1.00f);
+    colors[ImGuiCol_TableBorderStrong] = ImVec4(0.19f, 0.19f, 0.19f, 1.00f);
     colors[ImGuiCol_TableBorderLight] = ImVec4(0.15f, 0.15f, 0.15f, 1.00f);
-    colors[ImGuiCol_TableRowBg] = ImVec4(0, 0, 0, 0);
-    colors[ImGuiCol_TableRowBgAlt] = ImVec4(0.08f, 0.08f, 0.08f, 1.00f);
+    colors[ImGuiCol_TableRowBg] = ImVec4(0.00f, 0.00f, 0.00f, 0.00f);
+    colors[ImGuiCol_TableRowBgAlt] = ImVec4(0.10f, 0.10f, 0.10f, 1.00f);
+    colors[ImGuiCol_ResizeGrip] = ImVec4(0.25f, 0.25f, 0.25f, 1.00f);
+    colors[ImGuiCol_ResizeGripHovered] = ImVec4(0.30f, 0.30f, 0.30f, 1.00f);
+    colors[ImGuiCol_ResizeGripActive] = ImVec4(0.35f, 0.35f, 0.35f, 1.00f);
+    colors[ImGuiCol_Button] = ImVec4(0.17f, 0.17f, 0.17f, 1.00f);
+    colors[ImGuiCol_ButtonHovered] = ImVec4(0.21f, 0.35f, 0.54f, 1.00f);
+    colors[ImGuiCol_ButtonActive] = ImVec4(0.24f, 0.39f, 0.64f, 1.00f);
+    colors[ImGuiCol_CheckMark] = ImVec4(0.34f, 0.54f, 0.79f, 1.00f);
+    colors[ImGuiCol_SliderGrab] = ImVec4(0.24f, 0.39f, 0.64f, 1.00f);
+    colors[ImGuiCol_SliderGrabActive] = ImVec4(0.29f, 0.49f, 0.74f, 1.00f);
+    colors[ImGuiCol_Header] = ImVec4(0.19f, 0.19f, 0.19f, 0.80f);
+    colors[ImGuiCol_HeaderHovered] = ImVec4(0.21f, 0.35f, 0.54f, 0.90f);
+    colors[ImGuiCol_HeaderActive] = ImVec4(0.24f, 0.39f, 0.64f, 0.90f);
 
-    style.WindowRounding = 6.0f;
-    style.FrameRounding = 4.0f;
-    style.GrabRounding = 4.0f;
-    style.ScrollbarRounding = 6.0f;
-    style.TabRounding = 4.0f;
+    style.WindowRounding = 8.0f;
+    style.FrameRounding = 6.0f;
+    style.GrabRounding = 6.0f;
+    style.ScrollbarRounding = 8.0f;
+    style.TabRounding = 6.0f;
     style.WindowBorderSize = 1.0f;
-    style.FrameBorderSize = 0.8f;
-    style.ScrollbarSize = 12.0f;
-    style.ItemSpacing = ImVec2(10, 6);
-    style.ItemInnerSpacing = ImVec2(6, 4);
-    style.CellPadding = ImVec2(6, 4);
-    style.WindowPadding = ImVec2(12, 12);
-    style.FramePadding = ImVec2(8, 5);
+    style.FrameBorderSize = 1.0f;
+    style.ScrollbarSize = 16.0f;
+    style.ItemSpacing = ImVec2(10, 8);
+    style.ItemInnerSpacing = ImVec2(8, 6);
+    style.CellPadding = ImVec2(8, 6);
+    style.WindowPadding = ImVec2(16, 16);
+    style.FramePadding = ImVec2(10, 6);
 
-    ImFontConfig CustomFont;
-    CustomFont.FontDataOwnedByAtlas = false;
-
-    ImFont* font = io.Fonts->AddFontFromMemoryTTF(
-        (void*)Custom,
-        static_cast<int>(Custom_len),
-        14.5f,
-        &CustomFont
-    );
-
-    io.FontDefault = font;
+    ImFont* poppins = io.Fonts->AddFontFromMemoryCompressedTTF(Poppins_Medium_compressed_data, Poppins_Medium_compressed_size, 16.5f);
+    io.FontDefault = poppins;
 
     ImGui_ImplWin32_Init(hwnd);
     ImGui_ImplDX11_Init(g_pd3dDevice, g_pd3dDeviceContext);
 
     wchar_t windowsPath[MAX_PATH];
     UINT len = GetWindowsDirectoryW(windowsPath, MAX_PATH);
-
-    if (len == 0 || len > MAX_PATH)
-    {
+    if (len == 0 || len > MAX_PATH) {
+        CleanupDeviceD3D();
         return 1;
     }
-
     wchar_t systemDrive[3] = { windowsPath[0], L':', L'\0' };
 
     std::wstring checkPath = std::wstring(systemDrive) + L"\\Windows\\System32\\kernel32.dll";
-    if (std::filesystem::exists(checkPath))
-    {
-        std::thread usnThread(LoadUSNJournal, systemDrive);
+    if (std::filesystem::exists(checkPath)) {
+        std::thread usnThread(LoadUSNJournal, std::wstring(systemDrive));
         usnThread.detach();
     }
 
@@ -173,7 +159,6 @@ int WINAPI WinMain
         RECT rect;
         GetClientRect(hwnd, &rect);
         ImGui::SetNextWindowSize(ImVec2((float)rect.right, (float)rect.bottom));
-
         ImGuiWindowFlags window_flags = ImGuiWindowFlags_NoDecoration |
             ImGuiWindowFlags_NoMove |
             ImGuiWindowFlags_NoSavedSettings |
@@ -181,101 +166,137 @@ int WINAPI WinMain
 
         ImGui::Begin("USN Journal", nullptr, window_flags);
 
-        if (g_loading)
-        {
+        if (g_loading) {
             ImVec2 pos = ImGui::GetWindowPos();
             ImVec2 size = ImGui::GetWindowSize();
             ImVec2 center = ImVec2(pos.x + size.x * 0.5f, pos.y + size.y * 0.5f - 20.0f);
 
             ImDrawList* draw_list = ImGui::GetWindowDrawList();
+            float t = (float)ImGui::GetTime();
 
-            float baseRadius = 30.0f;
-            float t = static_cast<float>(ImGui::GetTime());
-            float pulse = 0.85f + 0.15f * sinf(t * 3.0f);
-            float radius = baseRadius * pulse;
+            int currentItem = g_processedEntries.load();
+            int totalItems = g_totalEntries.load();
 
-            ImU32 colors[3] = {
-                IM_COL32(255, 60, 60, 255),
-                IM_COL32(255, 120, 120, 255),
-                IM_COL32(255, 180, 180, 255)
-            };
+            std::string subText;
+            if (totalItems > 0) {
+                char progressBuf[32];
+                sprintf_s(progressBuf, "%d/%d", currentItem, totalItems);
+                subText = progressBuf;
+            }
+            else {
+                subText = "PROCESSING: " + std::to_string(currentItem) + " ENTRIES";
+            }
+            std::transform(subText.begin(), subText.end(), subText.begin(), ::toupper);
 
-            for (int i = 0; i < 3; ++i)
-            {
-                float angle = t * 3.0f + i * 1.2f;
-                float start = angle;
-                float end = angle + 1.4f;
+            float radius = 15.0f;
+            float thickness = 4.0f;
+            ImVec2 spinnerCenter = ImVec2(center.x, center.y - 48.0f);
 
-                draw_list->PathArcTo(center, radius - i * 6.0f, start, end, 32);
-                draw_list->PathStroke(colors[i], false, 4.0f);
+            int num_segments = 25;
+            float start = abs(sinf(t * 1.8f) * (num_segments - 5));
+
+            float a_min = 3.14159265358979323846f * 2.0f * ((float)start) / (float)num_segments;
+            float a_max = 3.14159265358979323846f * 2.0f * ((float)num_segments - 3) / (float)num_segments;
+
+            ImU32 accentCol = IM_COL32(255, 100, 100, 220);
+
+            for (int i = 0; i < num_segments; i++) {
+                const float a = a_min + ((float)i / (float)num_segments) * (a_max - a_min);
+                draw_list->PathLineTo(ImVec2(spinnerCenter.x + cosf(a + t * -8) * radius, spinnerCenter.y + sinf(a + t * -8) * radius));
+            }
+            draw_list->PathStroke(accentCol, false, thickness);
+
+            const char* loadingText = "Parsing USN Journal";
+            float fontSize = 17.5f;
+            float defaultFontSize = 16.5f;
+            float fontScale = fontSize / defaultFontSize;
+
+            ImVec2 textSize = ImGui::CalcTextSize(loadingText);
+            textSize.x *= fontScale;
+            textSize.y *= fontScale;
+            ImVec2 textPos = ImVec2(center.x - textSize.x * 0.5f, center.y - 20.0f);
+            ImU32 textCol = IM_COL32(255, 255, 255, 255);
+            draw_list->AddText(ImGui::GetFont(), fontSize, textPos, textCol, loadingText);
+
+            ImVec2 subSize = ImGui::CalcTextSize(subText.c_str());
+            subSize.x *= fontScale;
+            subSize.y *= fontScale;
+            ImVec2 subPos = ImVec2(center.x - subSize.x * 0.5f, textPos.y + textSize.y + 15.0f);
+            ImU32 subTextCol = IM_COL32(153, 153, 153, 255);
+            draw_list->AddText(ImGui::GetFont(), fontSize, subPos, subTextCol, subText.c_str());
+        }
+        else {
+            ImGui::PushItemWidth(300.0f);
+            bool searchEntered = ImGui::InputTextWithHint("##Search", "Search", g_searchInputBuffer.data(), g_searchInputBuffer.size(), ImGuiInputTextFlags_EnterReturnsTrue);
+            ImGui::PopItemWidth();
+
+            ImGui::SameLine();
+            bool filterChanged = false;
+            filterChanged |= ImGui::Checkbox("Deleted", &g_filterDeleted);
+            ImGui::SameLine();
+            filterChanged |= ImGui::Checkbox("Renamed New", &g_filterRenamedNew);
+            ImGui::SameLine();
+            filterChanged |= ImGui::Checkbox("Renamed Old", &g_filterRenamedOld);
+            ImGui::SameLine();
+            filterChanged |= ImGui::Checkbox("Basic Info Change", &g_filterBasicInfo);
+            ImGui::SameLine();
+            filterChanged |= ImGui::Checkbox("Stream Change", &g_filterStream);
+            ImGui::SameLine();
+            filterChanged |= ImGui::Checkbox("Data Truncation", &g_filterDataTruncation);
+
+            ImGui::SameLine();
+            float buttonWidth = ImGui::CalcTextSize("USN Deleted").x + ImGui::GetStyle().FramePadding.x * 2;
+            ImGui::SameLine(ImGui::GetWindowContentRegionMax().x - buttonWidth);
+            if (ImGui::Button("USN Deleted")) {
+                USNAnalysis analyzer;
+                g_usnAnalysisResult = analyzer.analyze_usn_status();
+                g_showUSNAnalysisModal = true;
             }
 
-            const char* loadingText = "Parsing USN Journal...";
-            ImVec2 textSize = ImGui::CalcTextSize(loadingText);
-            ImVec2 textPos = ImVec2(center.x - textSize.x * 0.5f, center.y + baseRadius + 18.0f);
+            if (g_showUSNAnalysisModal) {
+                ImGui::OpenPopup("USN Deleted Result");
+            }
 
-            float textPulse = 0.85f + 0.15f * sinf(t * 2.0f);
-            int alpha = static_cast<int>(220 + 35 * textPulse);
-            if (alpha > 255) alpha = 255;
+            ImGui::SetNextWindowSize(ImVec2(1000, 300), ImGuiCond_FirstUseEver);
+            if (ImGui::BeginPopupModal("USN Deleted Result", &g_showUSNAnalysisModal))
+            {
+                ImGui::TextWrapped("%s", g_usnAnalysisResult.c_str());
+                ImGui::EndPopup();
+            }
 
-            ImU32 textColor = IM_COL32(220, 220, 220, alpha);
-            draw_list->AddText(ImGui::GetFont(), 16.0f, textPos, textColor, loadingText);
-        }
-
-        else {
-            ImGui::PushItemWidth(600.0f);
-            if (ImGui::InputText("Search", g_searchInputBuffer.data(), g_searchInputBuffer.size(),
-                ImGuiInputTextFlags_EnterReturnsTrue))
+            if (searchEntered)
             {
                 g_searchText = std::string(g_searchInputBuffer.data());
                 FilterEntries();
                 g_resetScroll = true;
             }
-            ImGui::PopItemWidth();
-
-            std::string oldestDate = "N/A";
+            if (filterChanged)
             {
-                std::lock_guard<std::mutex> lock(g_entriesMutex);
-                if (!g_entries.empty()) {
-                    oldestDate = std::min_element(
-                        g_entries.begin(), g_entries.end(),
-                        [](const USNEntryRender& a, const USNEntryRender& b) {
-                            return a.date < b.date;
-                        }
-                    )->date;
-                }
+                FilterEntries();
+                g_resetScroll = true;
             }
-
-            float windowWidth = ImGui::GetWindowContentRegionMax().x;
-            ImVec2 textSize = ImGui::CalcTextSize(("Oldest Entry: " + oldestDate).c_str());
-            ImGui::SameLine(windowWidth - textSize.x);
-            ImGui::Text("Oldest Entry: %s", oldestDate.c_str());
 
             std::lock_guard<std::mutex> lock(g_entriesMutex);
             auto& displayEntries = g_filteredEntries;
 
-            ImGui::BeginChild("TableScrollArea", ImVec2(0, 0), false, ImGuiWindowFlags_HorizontalScrollbar);
+            ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, 8.0f);
+            ImGui::BeginChild("TableScrollArea", ImVec2(0, -25.0f), true, ImGuiWindowFlags_HorizontalScrollbar);
+            ImGui::PopStyleVar();
 
-            if (ImGui::BeginTable("USNTable", 4,
-                ImGuiTableFlags_Resizable | ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_Sortable))
-            {
+            if (ImGui::BeginTable("USNTable", 4, ImGuiTableFlags_Resizable | ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_BordersOuter | ImGuiTableFlags_RowBg | ImGuiTableFlags_Sortable | ImGuiTableFlags_SizingStretchProp)) {
                 ImGui::TableSetupScrollFreeze(0, 1);
-
-                ImGui::TableSetupColumn("Name");
-                ImGui::TableSetupColumn("Date");
-                ImGui::TableSetupColumn("Reason");
-                ImGui::TableSetupColumn("Directory");
+                ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthStretch);
+                ImGui::TableSetupColumn("Date", ImGuiTableColumnFlags_WidthFixed, 150.0f);
+                ImGui::TableSetupColumn("Reason", ImGuiTableColumnFlags_WidthStretch);
+                ImGui::TableSetupColumn("Directory", ImGuiTableColumnFlags_WidthStretch);
                 ImGui::TableHeadersRow();
 
-                if (ImGuiTableSortSpecs* sortSpecs = ImGui::TableGetSortSpecs())
-                {
-                    if (sortSpecs->SpecsDirty)
-                    {
+                if (ImGuiTableSortSpecs* sortSpecs = ImGui::TableGetSortSpecs()) {
+                    if (sortSpecs->SpecsDirty) {
                         const ImGuiTableColumnSortSpecs& spec = sortSpecs->Specs[0];
                         std::sort(displayEntries.begin(), displayEntries.end(),
                             [&](const USNEntryRender& a, const USNEntryRender& b) {
-                                switch (spec.ColumnIndex)
-                                {
+                                switch (spec.ColumnIndex) {
                                 case 0: return (spec.SortDirection == ImGuiSortDirection_Ascending) ? (a.name < b.name) : (a.name > b.name);
                                 case 1: return (spec.SortDirection == ImGuiSortDirection_Ascending) ? (a.date < b.date) : (a.date > b.date);
                                 case 2: return (spec.SortDirection == ImGuiSortDirection_Ascending) ? (a.reason < b.reason) : (a.reason > b.reason);
@@ -287,18 +308,15 @@ int WINAPI WinMain
                     }
                 }
 
-                if (g_resetScroll)
-                {
+                if (g_resetScroll) {
                     ImGui::SetScrollY(0.0f);
                     g_resetScroll = false;
                 }
 
                 ImGuiListClipper clipper;
                 clipper.Begin(static_cast<int>(displayEntries.size()));
-                while (clipper.Step())
-                {
-                    for (int row_n = clipper.DisplayStart; row_n < clipper.DisplayEnd; row_n++)
-                    {
+                while (clipper.Step()) {
+                    for (int row_n = clipper.DisplayStart; row_n < clipper.DisplayEnd; row_n++) {
                         const auto& e = displayEntries[row_n];
                         ImGui::TableNextRow();
 
@@ -307,18 +325,12 @@ int WINAPI WinMain
                         ImGui::TableSetColumnIndex(2); ImGui::TextUnformatted(e.reason.c_str());
                         ImGui::TableSetColumnIndex(3); ImGui::TextUnformatted(e.directory.c_str());
 
-                        std::string rowPopupName = "row_context_" + std::to_string(row_n);
-                        std::string aggPopupName = "agg_events_popup_" + std::to_string(row_n);
-
                         ImGui::PushID(row_n);
-
-                        static int g_modalOpenRow = -1;
 
                         ImGui::TableSetColumnIndex(0);
                         ImGui::Selectable("##row_full", false, ImGuiSelectableFlags_SpanAllColumns);
 
-                        if (ImGui::BeginPopupContextItem(("row_options_" + std::to_string(row_n)).c_str()))
-                        {
+                        if (ImGui::BeginPopupContextItem(("row_options_" + std::to_string(row_n)).c_str())) {
                             if (ImGui::Selectable("Copy Name")) {
                                 const std::wstring wname(e.name.begin(), e.name.end());
                                 if (OpenClipboard(NULL)) {
@@ -366,85 +378,68 @@ int WINAPI WinMain
                         if (g_modalOpenRow == row_n) {
                             auto fileId = e.fileId;
                             auto it = std::find_if(g_entriesGrouped.begin(), g_entriesGrouped.end(),
-                                [fileId](const USNEntryRender& r) { return r.fileId == fileId; });
+                                [fileId](const USNEntryRender& r) { return memcmp(&r.fileId, &fileId, sizeof(FILE_ID_128)) == 0; });
                             if (it != g_entriesGrouped.end()) {
                                 auto& grouped = *it;
 
-                                ImGui::OpenPopup(("Entry Information - " + grouped.name).c_str());
+                                static bool showModal = true;
+                                if (showModal) {
+                                    ImGui::OpenPopup(("Entry Information - " + grouped.name).c_str());
+                                }
 
-                                ImGui::SetNextWindowSize(ImVec2(1280, 720), ImGuiCond_FirstUseEver);
-                                ImGui::SetNextWindowSizeConstraints(ImVec2(1000, 700), ImVec2(FLT_MAX, FLT_MAX));
-                                ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 10.0f);
-                                ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, 6.0f);
+                                ImGui::SetNextWindowSize(ImVec2(1300, 600), ImGuiCond_FirstUseEver);
+                                ImGui::SetNextWindowSizeConstraints(ImVec2(800, 400), ImVec2(FLT_MAX, FLT_MAX));
+                                ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 12.0f);
+                                ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, 8.0f);
+                                ImGui::PushStyleColor(ImGuiCol_PopupBg, ImVec4(0.12f, 0.12f, 0.12f, 0.98f));
 
-                                if (ImGui::BeginPopupModal(("Entry Information - " + grouped.name).c_str(), NULL,
-                                    ImGuiWindowFlags_None))
-                                {
-                                    float windowWidth = ImGui::GetWindowWidth();
-                                    float buttonSize = ImGui::GetFrameHeight();
-                                    float spacing = ImGui::GetStyle().ItemSpacing.x;
-
-                                    ImGui::TextUnformatted("Name:");
-                                    ImGui::SameLine();
-                                    ImGui::TextUnformatted(grouped.name.c_str());
-
-                                    ImGui::SameLine();
-                                    ImGui::SetCursorPosX(windowWidth - buttonSize - spacing);
-
-                                    ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(0, 0));
-                                    if (ImGui::Button("X", ImVec2(buttonSize, buttonSize))) {
-                                        ImGui::CloseCurrentPopup();
-                                        g_modalOpenRow = -1;
-                                    }
-                                    ImGui::PopStyleVar();
-
+                                if (ImGui::BeginPopupModal(("Entry Information - " + grouped.name).c_str(), &showModal,
+                                    ImGuiWindowFlags_None)) {
                                     if (!grouped.events.empty()) {
                                         const auto& ev = grouped.events.back();
-
-                                        ImGui::TextUnformatted("Date:");
-                                        ImGui::SameLine();
-                                        ImGui::TextUnformatted(ev.date.c_str());
-
-                                        ImGui::TextUnformatted("Reason:");
-                                        ImGui::SameLine();
-                                        ImGui::TextUnformatted(ev.reason.c_str());
-
-                                        ImGui::TextUnformatted("Directory:");
-                                        ImGui::SameLine();
-                                        ImGui::TextUnformatted(ev.directory.c_str());
+                                        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.8f, 0.8f, 0.8f, 1.0f));
+                                        ImGui::TextUnformatted("Latest Event:");
+                                        ImGui::PopStyleColor();
+                                        ImGui::Indent(10.0f);
+                                        ImGui::Text("Date: %s", ev.date.c_str());
+                                        ImGui::Text("Reason: %s", ev.reason.c_str());
+                                        ImGui::Text("Directory: %s", ev.directory.c_str());
+                                        ImGui::Unindent(10.0f);
                                     }
+
+                                    ImGui::Separator();
+
+                                    ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.8f, 0.8f, 0.8f, 1.0f));
+                                    ImGui::TextUnformatted("Event History:");
+                                    ImGui::PopStyleColor();
+
                                     if (ImGui::BeginTable("agg_events_table", 4,
-                                        ImGuiTableFlags_RowBg | ImGuiTableFlags_Borders | ImGuiTableFlags_SizingStretchProp))
-                                    {
-                                        ImGui::TableSetupColumn("Name");
-                                        ImGui::TableSetupColumn("Date");
-                                        ImGui::TableSetupColumn("Reason");
-                                        ImGui::TableSetupColumn("Directory");
+                                        ImGuiTableFlags_Resizable | ImGuiTableFlags_RowBg | ImGuiTableFlags_Borders | ImGuiTableFlags_SizingStretchProp | ImGuiTableFlags_ScrollY)) {
+                                        ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthStretch);
+                                        ImGui::TableSetupColumn("Date", ImGuiTableColumnFlags_WidthFixed, 120.0f);
+                                        ImGui::TableSetupColumn("Reason", ImGuiTableColumnFlags_WidthStretch);
+                                        ImGui::TableSetupColumn("Directory", ImGuiTableColumnFlags_WidthStretch);
                                         ImGui::TableHeadersRow();
 
                                         for (auto it = grouped.events.rbegin(); it != grouped.events.rend(); ++it) {
                                             const auto& ev = *it;
-
                                             ImGui::TableNextRow();
-
-                                            ImGui::TableSetColumnIndex(0);
-                                            ImGui::TextUnformatted(ev.name.c_str());
-
-                                            ImGui::TableSetColumnIndex(1);
-                                            ImGui::TextUnformatted(ev.date.c_str());
-
-                                            ImGui::TableSetColumnIndex(2);
-                                            ImGui::TextUnformatted(ev.reason.c_str());
-
-                                            ImGui::TableSetColumnIndex(3);
-                                            ImGui::TextUnformatted(ev.directory.c_str());
+                                            ImGui::TableSetColumnIndex(0); ImGui::TextUnformatted(ev.name.c_str());
+                                            ImGui::TableSetColumnIndex(1); ImGui::TextUnformatted(ev.date.c_str());
+                                            ImGui::TableSetColumnIndex(2); ImGui::TextUnformatted(ev.reason.c_str());
+                                            ImGui::TableSetColumnIndex(3); ImGui::TextUnformatted(ev.directory.c_str());
                                         }
                                         ImGui::EndTable();
                                     }
 
                                     ImGui::EndPopup();
                                 }
+                                else {
+                                    g_modalOpenRow = -1;
+                                    showModal = true;
+                                }
 
+                                ImGui::PopStyleColor();
                                 ImGui::PopStyleVar(2);
                             }
                         }
@@ -457,17 +452,28 @@ int WINAPI WinMain
             }
 
             ImGui::EndChild();
-        }
 
-        ImGui::End();
-        ImGui::Render();
+            std::string oldestDate = "N/A";
+            if (!g_entries.empty()) {
+                oldestDate = std::min_element(
+                    g_entries.begin(), g_entries.end(),
+                    [](const USNEntryRender& a, const USNEntryRender& b) {
+                        return a.date < b.date;
+                    }
+                )->date;
+            }
+            ImGui::TextColored(ImVec4(0.7f, 0.7f, 0.7f, 1.0f), "Oldest Entry: %s", oldestDate.c_str());
+            }
 
-        g_pd3dDeviceContext->OMSetRenderTargets(1, &g_mainRenderTargetView, nullptr);
-        float clear_color[4] = { 0.1f, 0.1f, 0.1f, 1.0f };
-        g_pd3dDeviceContext->ClearRenderTargetView(g_mainRenderTargetView, clear_color);
+            ImGui::End();
+            ImGui::Render();
 
-        ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
-        g_pSwapChain->Present(1, 0);
+            g_pd3dDeviceContext->OMSetRenderTargets(1, &g_mainRenderTargetView, nullptr);
+            float clear_color[4] = { 0.08f, 0.08f, 0.08f, 1.0f };
+            g_pd3dDeviceContext->ClearRenderTargetView(g_mainRenderTargetView, clear_color);
+
+            ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
+            g_pSwapChain->Present(1, 0);
     }
 
     ImGui_ImplDX11_Shutdown();

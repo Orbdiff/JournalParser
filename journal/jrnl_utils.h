@@ -1,22 +1,27 @@
 ﻿#pragma once
 
 #include "usn_reader.hh"
+#include <sstream>
+#include <map>
+#include <algorithm>
 
 std::atomic<bool> g_loading{ true };
 
-struct USNEvent {
+struct USNEvent 
+{
     std::string name;
     std::string date;
     std::string reason;
     std::string directory;
 };
 
-struct USNEntryRender {
+struct USNEntryRender
+{
     std::string name;
     std::string date;
     std::string reason;
     std::string directory;
-    ULONGLONG fileId = 0;
+    FILE_ID_128 fileId = {};
     std::vector<USNEvent> events;
 };
 
@@ -30,7 +35,15 @@ std::vector<char> g_searchInputBuffer(512, 0);
 std::string g_searchText;
 bool g_resetScroll = false;
 
-std::string WStringToString(const std::wstring& wstr) {
+bool g_filterDeleted = false;
+bool g_filterRenamedNew = false;
+bool g_filterRenamedOld = false;
+bool g_filterBasicInfo = false;
+bool g_filterStream = false;
+bool g_filterDataTruncation = false;
+
+std::string WStringToString(const std::wstring& wstr)
+{
     if (wstr.empty()) return {};
     int size_needed = WideCharToMultiByte(CP_UTF8, 0, wstr.data(), (int)wstr.size(), nullptr, 0, nullptr, nullptr);
     std::string str(size_needed, 0);
@@ -38,17 +51,95 @@ std::string WStringToString(const std::wstring& wstr) {
     return str;
 }
 
-std::string FileTimeToString(const FILETIME& ft) {
+std::string FileTimeToString(const FILETIME& ft)
+{
     SYSTEMTIME st{};
     FileTimeToSystemTime(&ft, &st);
     return std::format("{:04}-{:02}-{:02} {:02}:{:02}:{:02}", st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute, st.wSecond);
 }
 
-void LoadUSNJournal(const std::wstring& volume) {
-    USNJournalReader reader(volume);
-    reader.Run();
+bool evaluate_condition(const std::string& field, const std::string& condition) {
+    if (condition.empty()) return true;
 
-    auto rawEntries = reader.GetEntriesCopy();
+    std::vector<std::string> parts;
+    std::vector<char> ops;
+    size_t start = 0;
+
+    while (start < condition.size()) {
+        size_t and_pos = condition.find("&&", start);
+        size_t not_pos = condition.find("!!", start);
+        size_t or_pos = condition.find("||", start);
+        size_t min_pos = condition.size();
+        char op = 0;
+        if (and_pos < min_pos) { min_pos = and_pos; op = '&'; }
+        if (not_pos < min_pos) { min_pos = not_pos; op = '!'; }
+        if (or_pos < min_pos) { min_pos = or_pos; op = '|'; }
+        std::string part = condition.substr(start, min_pos - start);
+        parts.push_back(part);
+        if (min_pos == condition.size()) break;
+        ops.push_back(op);
+        start = min_pos + 2;
+    }
+
+    if (parts.empty()) return true;
+
+    std::string field_lower = field;
+    std::transform(field_lower.begin(), field_lower.end(), field_lower.begin(), ::tolower);
+
+    std::string part_lower = parts[0];
+    std::transform(part_lower.begin(), part_lower.end(), part_lower.begin(), ::tolower);
+
+    bool result = field_lower.find(part_lower) != std::string::npos;
+    for (size_t i = 0; i < ops.size(); ++i) 
+    {
+        part_lower = parts[i + 1];
+        std::transform(part_lower.begin(), part_lower.end(), part_lower.begin(), ::tolower);
+
+        bool has = field_lower.find(part_lower) != std::string::npos;
+        if (ops[i] == '&') result &= has;
+        else if (ops[i] == '!') result &= !has;
+        else if (ops[i] == '|') result |= has;
+    }
+    return result;
+}
+
+bool matches_search_advanced(const USNEntryRender& e, const std::string& search)
+{
+    if (search.empty()) return true;
+
+    std::vector<std::string> filters;
+    std::stringstream ss(search);
+    std::string token;
+    while (std::getline(ss, token, ';')) {
+        filters.push_back(token);
+    }
+
+    std::map<std::string, std::string> column_map;
+    column_map["name"] = e.name;
+    column_map["reason"] = e.reason;
+    column_map["directory"] = e.directory;
+    column_map["date"] = e.date;
+
+    for (const std::string& filter : filters) {
+        size_t colon = filter.find(':');
+        std::string col = "name";
+        std::string val = filter;
+        if (colon != std::string::npos) {
+            col = filter.substr(0, colon);
+            val = filter.substr(colon + 1);
+        }
+        if (column_map.find(col) == column_map.end()) continue;
+        if (!evaluate_condition(column_map[col], val)) return false;
+    }
+    return true;
+}
+
+void LoadUSNJournal(const std::wstring& volume)
+{
+    Run(volume);
+
+    auto rawEntries = GetEntriesCopy();
+    g_totalEntries = (int)rawEntries.size();
 
     std::vector<USNEntryRender> entriesIndividual;
     entriesIndividual.reserve(rawEntries.size());
@@ -56,11 +147,15 @@ void LoadUSNJournal(const std::wstring& volume) {
     std::vector<USNEntryRender> entriesGrouped;
     entriesGrouped.reserve(rawEntries.size());
 
-    std::unordered_map<ULONGLONG, size_t> fileIdMap;
+    std::unordered_map<std::string, int> fileIdMap;
 
-    for (auto& e : rawEntries) {
-        if (e.fileId == 0)
-            e.fileId = e.usn;
+    for (auto& e : rawEntries)
+    {
+        FILE_ID_128 zeroId = {};
+        if (memcmp(&e.fileId, &zeroId, sizeof(FILE_ID_128)) == 0) 
+        {
+            memcpy(&e.fileId.Identifier, &e.usn, sizeof(ULONGLONG));
+        }
 
         USNEntryRender ind;
         ind.name = WStringToString(e.name);
@@ -77,7 +172,8 @@ void LoadUSNJournal(const std::wstring& volume) {
         grp.directory = WStringToString(e.directory);
         grp.fileId = e.fileId;
 
-        auto it = fileIdMap.find(grp.fileId);
+        std::string key((char*)&grp.fileId, sizeof(FILE_ID_128));
+        auto it = fileIdMap.find(key);
         if (it != fileIdMap.end()) {
             entriesGrouped[it->second].events.push_back({
                 grp.name,
@@ -94,9 +190,8 @@ void LoadUSNJournal(const std::wstring& volume) {
                 grp.directory
                 });
 
-            ULONGLONG id = grp.fileId;
             entriesGrouped.push_back(std::move(grp));
-            fileIdMap[id] = entriesGrouped.size() - 1;
+            fileIdMap[key] = (int)(entriesGrouped.size() - 1);
         }
     }
 
@@ -115,51 +210,29 @@ void FilterEntries() {
     std::lock_guard<std::mutex> lock(g_entriesMutex);
     g_filteredEntries.clear();
 
-    if (g_searchText.empty()) {
-        g_filteredEntries = g_entries;
-    }
-    else {
-        std::vector<std::string> conditions;
-        size_t start = 0, end;
-        while ((end = g_searchText.find(';', start)) != std::string::npos) {
-            conditions.push_back(g_searchText.substr(start, end - start));
-            start = end + 1;
+    bool anyReasonFilterActive = g_filterDeleted || g_filterRenamedNew || g_filterRenamedOld || g_filterBasicInfo || g_filterStream || g_filterDataTruncation;
+
+    for (const auto& e : g_entries)
+    {
+        bool matches_search = matches_search_advanced(e, g_searchText);
+        bool matches_reason = !anyReasonFilterActive;
+        if (anyReasonFilterActive) {
+            if (g_filterDeleted && e.reason.find("File Delete") != std::string::npos) matches_reason = true;
+            if (g_filterRenamedNew && e.reason.find("Rename New Name") != std::string::npos) matches_reason = true;
+            if (g_filterRenamedOld && e.reason.find("Rename Old Name") != std::string::npos) matches_reason = true;
+            if (g_filterBasicInfo && e.reason.find("Basic Info Change") != std::string::npos) matches_reason = true;
+            if (g_filterStream && e.reason.find("Stream Change") != std::string::npos) matches_reason = true;
+            if (g_filterDataTruncation && e.reason.find("Data Truncation") != std::string::npos) matches_reason = true;
         }
-        conditions.push_back(g_searchText.substr(start));
 
-        for (auto& e : g_entries) {
-            bool match = true;
-            for (auto& cond : conditions) {
-                size_t colon = cond.find(':');
-                std::string col = "any";
-                std::string val;
-                if (colon != std::string::npos) {
-                    col = cond.substr(0, colon);
-                    val = cond.substr(colon + 1);
-                }
-                else val = cond;
-
-                std::transform(val.begin(), val.end(), val.begin(), ::tolower);
-                std::string nameLower = e.name; std::transform(nameLower.begin(), nameLower.end(), nameLower.begin(), ::tolower);
-                std::string reasonLower = e.reason; std::transform(reasonLower.begin(), reasonLower.end(), reasonLower.begin(), ::tolower);
-                std::string dirLower = e.directory; std::transform(dirLower.begin(), dirLower.end(), dirLower.begin(), ::tolower);
-
-                bool conditionMatch = false;
-                if (col == "name") conditionMatch = nameLower.find(val) != std::string::npos;
-                else if (col == "reason") conditionMatch = reasonLower.find(val) != std::string::npos;
-                else if (col == "directory") conditionMatch = dirLower.find(val) != std::string::npos;
-                else conditionMatch = (nameLower.find(val) != std::string::npos ||
-                    reasonLower.find(val) != std::string::npos ||
-                    dirLower.find(val) != std::string::npos);
-
-                if (!conditionMatch) { match = false; break; }
-            }
-            if (match) g_filteredEntries.push_back(e);
+        if (matches_search && matches_reason) {
+            g_filteredEntries.push_back(e);
         }
     }
 
     std::sort(g_filteredEntries.begin(), g_filteredEntries.end(),
-        [](const USNEntryRender& a, const USNEntryRender& b) {
+        [](const USNEntryRender& a, const USNEntryRender& b)
+        {
             return a.date > b.date;
         });
 }
